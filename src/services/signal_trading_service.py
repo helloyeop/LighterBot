@@ -118,16 +118,15 @@ class SignalTradingService:
                 leverage=leverage
             )
 
-            # order_id가 있으면 거래 성공으로 판단
-            order_id = result.get("order_id") if result else None
-            if order_id:
+            # RespSendTx 객체에서 성공 여부 판단 (code=200이면 성공)
+            is_success = result and hasattr(result, 'code') and result.code == 200
+            if is_success:
                 logger.info(
                     "Trade executed successfully",
                     symbol=symbol,
                     side=side,
                     quantity=quantity,
-                    order_id=order_id,
-                    tx_hash=result.get("tx_hash", {}).get("tx_hash") if result.get("tx_hash") else None
+                    tx_hash=result.tx_hash if hasattr(result, 'tx_hash') else None
                 )
 
                 # 체결 처리 대기 후 실제 포지션 동기화
