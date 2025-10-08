@@ -1,4 +1,4 @@
-# Lighter DEX Trading Bot
+# LighterBot
 
 TradingView 신호를 받아 Lighter DEX에서 자동으로 거래를 실행하는 간단한 시스템입니다.
 
