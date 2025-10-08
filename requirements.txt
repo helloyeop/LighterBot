@@ -1,0 +1,27 @@
+# Core dependencies
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Web framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Lighter DEX SDK
+git+https://github.com/elliottech/lighter-python.git
+
+# Database - SQLite with async support
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+greenlet==3.0.3
+
+# HTTP client
+httpx==0.26.0
+aiohttp==3.9.1
+
+# Monitoring & Logging
+structlog==24.1.0
+
+# Utilities
+arrow==1.3.0
