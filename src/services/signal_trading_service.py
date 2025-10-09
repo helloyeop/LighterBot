@@ -48,23 +48,27 @@ class SignalTradingService:
             logger.error("Failed to process signal", error=str(e), signal=signal.dict())
 
     async def _handle_long_signal(self, symbol: str, current_position: float, signal: TradingViewSignal):
-        """Long 신호 처리"""
-        target_position = self.base_quantity  # Long 포지션으로 설정
+        """Long 신호 처리 - 스마트 포지션 전환"""
+        target_position = self.base_quantity  # Long 포지션 목표
 
-        if current_position == target_position:
-            logger.info("Already in target long position", symbol=symbol, position=current_position)
+        # 이미 Long 포지션인 경우 변화 없음
+        if current_position > 0:
+            logger.info("Already in long position, no action needed", symbol=symbol, position=current_position)
             return
 
-        # 필요한 거래량 계산
-        trade_quantity = target_position - current_position
-
-        success = False
-        if trade_quantity > 0:
-            # Long 포지션 증가 (Buy)
-            success = await self._execute_trade(symbol, "buy", abs(trade_quantity), signal.leverage)
+        # 거래량 계산
+        if current_position < 0:
+            # Short 포지션이 있으면 2배 매수 (청산 + 반전)
+            trade_quantity = abs(current_position) + target_position
+            logger.info("Reversing short to long position", symbol=symbol,
+                       current=current_position, trade_quantity=trade_quantity)
         else:
-            # Short 포지션 감소 (Sell/Close short)
-            success = await self._execute_trade(symbol, "sell", abs(trade_quantity), signal.leverage)
+            # 포지션 없으면 기본 매수
+            trade_quantity = target_position
+            logger.info("Opening new long position", symbol=symbol, trade_quantity=trade_quantity)
+
+        # Buy 거래 실행
+        success = await self._execute_trade(symbol, "buy", trade_quantity, signal.leverage)
 
         # 거래 성공 시에만 포지션 업데이트
         if success:
@@ -74,23 +78,27 @@ class SignalTradingService:
             logger.warning("Position not updated due to trade failure", symbol=symbol, target_position=target_position)
 
     async def _handle_short_signal(self, symbol: str, current_position: float, signal: TradingViewSignal):
-        """Short 신호 처리"""
-        target_position = -self.base_quantity  # Short 포지션으로 설정
+        """Short 신호 처리 - 스마트 포지션 전환"""
+        target_position = -self.base_quantity  # Short 포지션 목표
 
-        if current_position == target_position:
-            logger.info("Already in target short position", symbol=symbol, position=current_position)
+        # 이미 Short 포지션인 경우 변화 없음
+        if current_position < 0:
+            logger.info("Already in short position, no action needed", symbol=symbol, position=current_position)
             return
 
-        # 필요한 거래량 계산
-        trade_quantity = target_position - current_position
-
-        success = False
-        if trade_quantity < 0:
-            # Short 포지션 증가 (Sell)
-            success = await self._execute_trade(symbol, "sell", abs(trade_quantity), signal.leverage)
+        # 거래량 계산
+        if current_position > 0:
+            # Long 포지션이 있으면 2배 매도 (청산 + 반전)
+            trade_quantity = current_position + abs(target_position)
+            logger.info("Reversing long to short position", symbol=symbol,
+                       current=current_position, trade_quantity=trade_quantity)
         else:
-            # Long 포지션 감소 (Buy/Close long)
-            success = await self._execute_trade(symbol, "buy", abs(trade_quantity), signal.leverage)
+            # 포지션 없으면 기본 매도
+            trade_quantity = abs(target_position)
+            logger.info("Opening new short position", symbol=symbol, trade_quantity=trade_quantity)
+
+        # Sell 거래 실행
+        success = await self._execute_trade(symbol, "sell", trade_quantity, signal.leverage)
 
         # 거래 성공 시에만 포지션 업데이트
         if success:
