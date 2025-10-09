@@ -3,7 +3,7 @@ from typing import Dict, Any
 from datetime import datetime
 import json
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from config.settings import get_settings
 
 logger = structlog.get_logger()
@@ -12,14 +12,31 @@ settings = get_settings()
 
 
 class TradingViewSignal(BaseModel):
-    secret: str = Field(default=None)  # Make secret field optional for testing
-    sale: str = Field(..., pattern="^(long|short)$")
-    symbol: str = Field(default="BTC")  # 기본값으로 BTC 설정
-    quantity: float = Field(default=0.001, gt=0)  # 기본 포지션 크기
+    secret: str = Field(default=None)
+    # TradingView의 action 필드를 sale 필드로 매핑
+    action: str = Field(default=None, pattern="^(buy|sell|long|short)$")
+    sale: str = Field(default=None, pattern="^(long|short)$")
+    symbol: str = Field(default="BTC")
+    quantity: float = Field(default=0.001, gt=0)
     leverage: int = Field(default=1, ge=1, le=20)
     alert_time: str = Field(default=None)
     strategy: str = Field(default="signal_following")
     comment: str = Field(default=None)
+    # TradingView 표준 필드들 추가
+    orderType: str = Field(default="market")
+    stopLoss: float = Field(default=None)
+    takeProfit: float = Field(default=None)
+
+    @validator('sale', pre=True, always=True)
+    def set_sale_from_action(cls, v, values):
+        # action 필드가 있으면 sale 필드로 변환
+        if not v and 'action' in values:
+            action = values['action']
+            if action in ['buy', 'long']:
+                return 'long'
+            elif action in ['sell', 'short']:
+                return 'short'
+        return v or 'long'  # 기본값
 
 
 async def verify_tradingview_ip(request: Request) -> bool:
