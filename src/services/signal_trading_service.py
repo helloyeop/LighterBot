@@ -18,7 +18,104 @@ settings = get_settings()
 class SignalTradingService:
     def __init__(self):
         self.current_positions: Dict[str, float] = {}  # symbol -> position size (양수: long, 음수: short)
-        self.base_quantity = 0.001  # 기본 포지션 크기
+        self.base_quantity = 0.01  # 기본 포지션 크기 (고정값 사용시)
+        self.use_balance_percentage = True  # 잔액 비율 사용 여부
+        self.balance_percentage = 0.8  # 사용할 잔액 비율 (80%)
+
+    async def _calculate_position_size(self, symbol: str, leverage: int = 1) -> float:
+        """잔액 기반 포지션 크기 계산"""
+        try:
+            if not self.use_balance_percentage:
+                return self.base_quantity
+
+            # 계정 정보 조회
+            account_info = await lighter_client.get_account_info()
+            if not account_info:
+                logger.warning("Failed to get account info, using base quantity")
+                return self.base_quantity
+
+            # 사용 가능한 잔액 추출 (여러 형태로 시도)
+            available_balance = 0
+            if isinstance(account_info, dict):
+                # 먼저 balance 딕셔너리에서 확인
+                balance_data = account_info.get('balance', {})
+                if isinstance(balance_data, dict):
+                    available_balance = balance_data.get('available_balance', 0)
+                    if available_balance == 0:
+                        # collateral이나 total_asset_value 사용
+                        available_balance = balance_data.get('collateral', 0)
+                        if available_balance == 0:
+                            available_balance = balance_data.get('total_asset_value', 0)
+
+                # 딕셔너리에서 직접 available_balance 확인
+                if available_balance == 0:
+                    available_balance = account_info.get('available_balance', 0)
+            elif hasattr(account_info, 'available_balance'):
+                # 객체 형태인 경우
+                available_balance = getattr(account_info, 'available_balance', 0)
+
+            # 잔액을 float로 변환
+            try:
+                available_balance = float(available_balance) if available_balance else 0
+            except (ValueError, TypeError):
+                available_balance = 0
+
+            # 잔액이 유효하지 않으면 기본값 사용
+            if available_balance <= 0:
+                logger.warning(f"Invalid or zero balance ({available_balance}), using base quantity")
+                return self.base_quantity
+
+            # 현재 가격 조회 (price_fetcher 사용)
+            from src.utils.price_fetcher import price_fetcher
+
+            # 실시간 가격 가져오기
+            current_price = await price_fetcher.get_token_price(symbol)
+            if current_price and current_price > 0:
+                mid_price = current_price
+                logger.info(f"Using real-time price for {symbol}: ${current_price}")
+            else:
+                # 오더북에서 중간가 계산
+                orderbook_data = await price_fetcher.get_orderbook(symbol, 1)
+                if orderbook_data:
+                    bids = orderbook_data.get("bids", [])
+                    asks = orderbook_data.get("asks", [])
+                    best_bid = float(bids[0].get("price", 4000)) if bids else 4000
+                    best_ask = float(asks[0].get("price", 4000)) if asks else 4000
+                    mid_price = (best_bid + best_ask) / 2
+                    logger.info(f"Using orderbook mid-price for {symbol}: ${mid_price}")
+                else:
+                    # 폴백 가격
+                    fallback_prices = {"ETH": 4000, "BTC": 70000, "APEX": 1.5}
+                    mid_price = fallback_prices.get(symbol, 1.0)
+                    logger.warning(f"Using fallback price for {symbol}: ${mid_price}")
+
+            # 포지션 크기 계산: (잔액 * 비율 * 레버리지) / 가격
+            position_value = available_balance * self.balance_percentage * leverage
+            position_size = position_value / mid_price
+
+            # 최소/최대 제한
+            min_size = 0.001  # 최소 0.001 ETH
+            max_size = 1.0    # 최대 1 ETH
+            position_size = max(min_size, min(position_size, max_size))
+
+            # 소수점 4자리로 반올림
+            position_size = round(position_size, 4)
+
+            logger.info(
+                "Position size calculated",
+                symbol=symbol,
+                available_balance=available_balance,
+                percentage_used=self.balance_percentage,
+                leverage=leverage,
+                mid_price=mid_price,
+                calculated_size=position_size
+            )
+
+            return position_size
+
+        except Exception as e:
+            logger.error("Failed to calculate position size", error=str(e))
+            return self.base_quantity
 
     async def process_signal(self, signal: TradingViewSignal):
         """신호를 처리하고 포지션을 관리합니다."""
@@ -49,7 +146,8 @@ class SignalTradingService:
 
     async def _handle_long_signal(self, symbol: str, current_position: float, signal: TradingViewSignal):
         """Long 신호 처리 - 스마트 포지션 전환"""
-        target_position = self.base_quantity  # Long 포지션 목표
+        # 잔액 기반 포지션 크기 계산
+        target_position = await self._calculate_position_size(symbol, signal.leverage)
 
         # 이미 Long 포지션인 경우 변화 없음
         if current_position > 0:
@@ -70,16 +168,21 @@ class SignalTradingService:
         # Buy 거래 실행
         success = await self._execute_trade(symbol, "buy", trade_quantity, signal.leverage)
 
-        # 거래 성공 시에만 포지션 업데이트
+        # 거래 성공 시에만 포지션 업데이트 (DEX 동기화로 실제 포지션 확인)
         if success:
-            self.current_positions[symbol] = target_position
-            logger.info("Position updated after successful trade", symbol=symbol, new_position=target_position)
+            # DEX와 동기화하여 실제 포지션으로 업데이트
+            await self._sync_position_with_dex(symbol)
+            logger.info("Position updated after successful trade", symbol=symbol,
+                       expected_position=target_position,
+                       actual_position=self.current_positions.get(symbol, 0))
         else:
             logger.warning("Position not updated due to trade failure", symbol=symbol, target_position=target_position)
 
     async def _handle_short_signal(self, symbol: str, current_position: float, signal: TradingViewSignal):
         """Short 신호 처리 - 스마트 포지션 전환"""
-        target_position = -self.base_quantity  # Short 포지션 목표
+        # 잔액 기반 포지션 크기 계산
+        calculated_size = await self._calculate_position_size(symbol, signal.leverage)
+        target_position = -calculated_size  # Short 포지션 목표
 
         # 이미 Short 포지션인 경우 변화 없음
         if current_position < 0:
@@ -100,10 +203,13 @@ class SignalTradingService:
         # Sell 거래 실행
         success = await self._execute_trade(symbol, "sell", trade_quantity, signal.leverage)
 
-        # 거래 성공 시에만 포지션 업데이트
+        # 거래 성공 시에만 포지션 업데이트 (DEX 동기화로 실제 포지션 확인)
         if success:
-            self.current_positions[symbol] = target_position
-            logger.info("Position updated after successful trade", symbol=symbol, new_position=target_position)
+            # DEX와 동기화하여 실제 포지션으로 업데이트
+            await self._sync_position_with_dex(symbol)
+            logger.info("Position updated after successful trade", symbol=symbol,
+                       expected_position=target_position,
+                       actual_position=self.current_positions.get(symbol, 0))
         else:
             logger.warning("Position not updated due to trade failure", symbol=symbol, target_position=target_position)
 
@@ -137,9 +243,8 @@ class SignalTradingService:
                     tx_hash=result.tx_hash if hasattr(result, 'tx_hash') else None
                 )
 
-                # 체결 처리 대기 후 실제 포지션 동기화
+                # 체결 처리 대기
                 await asyncio.sleep(1)  # 체결 처리 대기
-                await self._sync_position_with_dex(symbol)
 
                 return True
             else:
@@ -172,9 +277,19 @@ class SignalTradingService:
             positions = await lighter_client.get_positions()
             if positions:
                 for pos in positions:
-                    if pos.get('symbol') == symbol:
-                        actual_position = float(pos.get('position', 0))
-                        if pos.get('sign') == -1:  # Short 포지션
+                    # AccountPosition 객체인 경우와 dict인 경우 모두 처리
+                    if hasattr(pos, 'symbol'):  # AccountPosition 객체
+                        pos_symbol = pos.symbol
+                        pos_position = float(pos.position)
+                        pos_sign = pos.sign
+                    else:  # dict 형태
+                        pos_symbol = pos.get('symbol')
+                        pos_position = float(pos.get('position', 0))
+                        pos_sign = pos.get('sign', 1)
+
+                    if pos_symbol == symbol:
+                        actual_position = pos_position
+                        if pos_sign == -1:  # Short 포지션
                             actual_position = -actual_position
 
                         # 내부 추적 업데이트

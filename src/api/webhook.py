@@ -83,9 +83,9 @@ async def receive_tradingview_webhook(
         if not await verify_tradingview_ip(request):
             raise HTTPException(status_code=403, detail="Unauthorized IP")
 
-        # Secret token verification (temporarily disabled for testing)
-        # if not await verify_secret_token(signal):
-        #     raise HTTPException(status_code=401, detail="Invalid secret token")
+        #Secret token verification (temporarily disabled for testing)
+        if not await verify_secret_token(signal):
+            raise HTTPException(status_code=401, detail="Invalid secret token")
 
         logger.info(
             "Webhook received",
