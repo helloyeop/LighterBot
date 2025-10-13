@@ -21,6 +21,8 @@ class SignalTradingService:
         self.base_quantity = 0.01  # 기본 포지션 크기 (고정값 사용시)
         self.use_balance_percentage = True  # 잔액 비율 사용 여부
         self.balance_percentage = 0.8  # 사용할 잔액 비율 (80%)
+        # 허용된 심볼 필터링 (빈 리스트이면 모든 심볼 허용)
+        self.allowed_symbols = getattr(settings, 'allowed_symbols', []) or []
 
     async def _calculate_position_size(self, symbol: str, leverage: int = 1) -> float:
         """잔액 기반 포지션 크기 계산"""
@@ -95,7 +97,7 @@ class SignalTradingService:
 
             # 최소/최대 제한
             min_size = 0.001  # 최소 0.001 ETH
-            max_size = 1.0    # 최대 1 ETH
+            max_size = 1000.0    # 최대 1 ETH
             position_size = max(min_size, min(position_size, max_size))
 
             # 소수점 4자리로 반올림
@@ -123,6 +125,15 @@ class SignalTradingService:
             symbol = signal.symbol
             sale_type = signal.sale
 
+            # 심볼 필터링 체크
+            if self.allowed_symbols and symbol not in self.allowed_symbols:
+                logger.info(
+                    "Signal ignored due to symbol filtering",
+                    symbol=symbol,
+                    allowed_symbols=self.allowed_symbols
+                )
+                return
+
             # 신호 처리 전 실제 DEX 포지션과 동기화
             await self._sync_position_with_dex(symbol)
 
@@ -140,6 +151,8 @@ class SignalTradingService:
                 await self._handle_long_signal(symbol, current_position, signal)
             elif sale_type == "short":
                 await self._handle_short_signal(symbol, current_position, signal)
+            elif sale_type == "close":
+                await self._handle_close_signal(symbol, current_position, signal)
 
         except Exception as e:
             logger.error("Failed to process signal", error=str(e), signal=signal.dict())
@@ -319,6 +332,44 @@ class SignalTradingService:
                 symbol=symbol,
                 error=str(e)
             )
+
+    async def _handle_close_signal(self, symbol: str, current_position: float, signal: TradingViewSignal):
+        """Close 신호 처리 - 현재 포지션 완전 종료"""
+        # 포지션이 없는 경우 에러 처리
+        if current_position == 0:
+            logger.warning("No position to close", symbol=symbol, current_position=current_position)
+            return
+
+        logger.info(
+            "Processing close signal",
+            symbol=symbol,
+            current_position=current_position
+        )
+
+        # 포지션 방향에 따라 반대 거래 실행
+        if current_position > 0:
+            # Long 포지션 종료 -> Sell
+            side = "sell"
+            trade_quantity = current_position
+            logger.info("Closing long position", symbol=symbol, trade_quantity=trade_quantity)
+        else:
+            # Short 포지션 종료 -> Buy
+            side = "buy"
+            trade_quantity = abs(current_position)
+            logger.info("Closing short position", symbol=symbol, trade_quantity=trade_quantity)
+
+        # 거래 실행
+        success = await self._execute_trade(symbol, side, trade_quantity, signal.leverage)
+
+        # 거래 성공 시에만 포지션 업데이트 (DEX 동기화로 실제 포지션 확인)
+        if success:
+            # DEX와 동기화하여 실제 포지션으로 업데이트
+            await self._sync_position_with_dex(symbol)
+            logger.info("Position closed successfully", symbol=symbol,
+                       previous_position=current_position,
+                       current_position=self.current_positions.get(symbol, 0))
+        else:
+            logger.warning("Position close failed", symbol=symbol, current_position=current_position)
 
     async def get_current_position(self, symbol: str) -> float:
         """현재 포지션 크기 반환"""

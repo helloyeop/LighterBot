@@ -14,8 +14,8 @@ settings = get_settings()
 class TradingViewSignal(BaseModel):
     secret: str = Field(default=None)
     # TradingView의 action 필드를 sale 필드로 매핑
-    action: str = Field(default=None, pattern="^(buy|sell|long|short)$")
-    sale: str = Field(default=None, pattern="^(long|short)$")
+    action: str = Field(default=None, pattern="^(buy|sell|long|short|close)$")
+    sale: str = Field(default=None, pattern="^(long|short|close)$")
     symbol: str = Field(default="BTC")
     quantity: float = Field(default=0.001, gt=0)
     leverage: int = Field(default=1, ge=1, le=20)
@@ -36,6 +36,8 @@ class TradingViewSignal(BaseModel):
                 return 'long'
             elif action in ['sell', 'short']:
                 return 'short'
+            elif action == 'close':
+                return 'close'
         return v or 'long'  # 기본값
 
 

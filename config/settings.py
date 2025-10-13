@@ -23,6 +23,11 @@ class Settings(BaseSettings):
         default="52.89.214.238,34.212.75.30,52.32.178.7,54.218.53.128,52.36.31.181",
         env="TRADINGVIEW_ALLOWED_IPS"
     )
+    # 허용된 심볼 필터링 (빈 문자열이면 모든 심볼 허용)
+    allowed_symbols: Union[List[str], str] = Field(
+        default="",
+        env="ALLOWED_SYMBOLS"
+    )
 
     # Risk Management
     max_position_size_usd: float = Field(default=100.0, env="MAX_POSITION_SIZE_USD")
@@ -45,6 +50,14 @@ class Settings(BaseSettings):
     def parse_allowed_ips(cls, v):
         if isinstance(v, str):
             return [ip.strip() for ip in v.split(",")]
+        return v
+
+    @field_validator("allowed_symbols", mode="before")
+    def parse_allowed_symbols(cls, v):
+        if isinstance(v, str):
+            if v.strip() == "":
+                return []  # 빈 문자열이면 빈 리스트 (모든 심볼 허용)
+            return [symbol.strip() for symbol in v.split(",")]
         return v
 
     class Config:
