@@ -14,6 +14,7 @@ from src.core.database import db_manager
 from src.core.lighter_client import lighter_client
 from src.core.risk_manager import risk_manager
 from src.api.webhook import router as webhook_router
+from src.api.multi_account import router as multi_account_router
 from src.utils.notifications import notification_manager
 from src.strategies.high_frequency import HighFrequencyTrader, TradingMode
 from src.strategies.market_order_hft import MarketOrderHFT
@@ -110,6 +111,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(webhook_router)
+app.include_router(multi_account_router)
 
 
 # Request Models for Orders

@@ -1,0 +1,14 @@
+{
+  "accounts": [
+    {
+      "account_index": 143145,
+      "api_key_index": 3,
+      "api_key": "02b30a1a9b18bddd1b9e5b4c2787bbbba861bd3284e1f74891559cbc647be7607feb2c3001c4abb1",
+      "api_secret": "48a1c6585da5bd631fea18f35a2f62c7f6b434ac142e6c993dca1513de5822cfbfb12275fd8ed72d",
+      "name": "Account 1",
+      "active": true,
+      "allowed_symbols": ["BTC", "ETH", "BNB", "SOL"]
+    }
+  ],
+  "default_account_index": 143145
+}

@@ -52,3 +52,20 @@ lighter_api_deploy.tar.gz
 # Temporary files
 *.tmp
 *.temp
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache directories
+.conda/
+node_modules/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# System cleanup artifacts
+SYSTEM_CLEANUP.md

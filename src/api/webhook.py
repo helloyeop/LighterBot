@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, HTTPException, Depends, BackgroundTasks
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 import json
 import structlog
@@ -26,6 +26,8 @@ class TradingViewSignal(BaseModel):
     orderType: str = Field(default="market")
     stopLoss: float = Field(default=None)
     takeProfit: float = Field(default=None)
+    # Multi-account support
+    account_index: Optional[int] = Field(default=None)
 
     @validator('sale', pre=True, always=True)
     def set_sale_from_action(cls, v, values):
@@ -98,8 +100,16 @@ async def receive_tradingview_webhook(
         )
 
         # Add to background task queue for processing
-        from src.services.signal_trading_service import process_trading_signal
-        background_tasks.add_task(process_trading_signal, signal)
+        from src.services.multi_account_signal_service import process_trading_signal_multi
+
+        if signal.account_index is not None:
+            # Process for specific account
+            background_tasks.add_task(process_trading_signal_multi, signal, signal.account_index)
+            logger.info(f"Routing signal to specific account: {signal.account_index}")
+        else:
+            # Process for all active accounts (even if only 1 account)
+            background_tasks.add_task(process_trading_signal_multi, signal, None)
+            logger.info("Processing signal for all active accounts")
 
         return {
             "status": "success",
@@ -109,6 +119,54 @@ async def receive_tradingview_webhook(
 
     except Exception as e:
         logger.error("Webhook processing error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tradingview/account/{account_index}")
+async def receive_tradingview_webhook_for_account(
+    account_index: int,
+    signal: TradingViewSignal,
+    request: Request,
+    background_tasks: BackgroundTasks
+):
+    """
+    Webhook endpoint for specific account
+    URL: /webhook/tradingview/account/143145
+    """
+    try:
+        # IP verification
+        if not await verify_tradingview_ip(request):
+            raise HTTPException(status_code=403, detail="Unauthorized IP")
+
+        # Secret token verification
+        if not await verify_secret_token(signal):
+            raise HTTPException(status_code=401, detail="Invalid secret token")
+
+        # Override account_index from URL path
+        signal.account_index = account_index
+
+        logger.info(
+            "Webhook received for specific account",
+            account_index=account_index,
+            sale=signal.sale,
+            symbol=signal.symbol,
+            quantity=signal.quantity,
+            leverage=signal.leverage
+        )
+
+        # Process for specific account
+        from src.services.multi_account_signal_service import process_trading_signal_multi
+        background_tasks.add_task(process_trading_signal_multi, signal, account_index)
+
+        return {
+            "status": "success",
+            "message": f"Signal received and queued for account {account_index}",
+            "account_index": account_index,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Webhook processing error for account {account_index}", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
