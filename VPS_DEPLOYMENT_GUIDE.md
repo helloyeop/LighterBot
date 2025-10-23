@@ -46,18 +46,22 @@ pip install -r requirements.txt
 ## ⚙️ 3단계: 환경 설정
 
 ```bash
-# .env 파일 생성 (기존 설정을 복사하거나 수정)
-cp .env.example .env  # 만약 있다면
-nano .env
+# .env 파일 생성
+cat > .env << 'EOF'
+LIGHTER_API_KEY=your_api_key
+LIGHTER_API_SECRET=your_api_secret
+LIGHTER_ACCOUNT_INDEX=143145
+LIGHTER_API_KEY_INDEX=3
+TRADINGVIEW_SECRET_TOKEN=lighter_to_the_moon_2918
+PORT=8000
+HOST=127.0.0.1
 
-# .env 파일 내용 예시:
-# LIGHTER_API_KEY=your_api_key
-# LIGHTER_API_SECRET=your_api_secret
-# LIGHTER_ACCOUNT_INDEX=143145
-# LIGHTER_API_KEY_INDEX=3
-# TRADINGVIEW_SECRET_TOKEN=lighter_to_the_moon_2918
-# PORT=8000
-# HOST=127.0.0.1
+# 웹훅 IP 제한 해제 (모든 IP 허용)
+TRADINGVIEW_ALLOWED_IPS=0.0.0.0
+EOF
+
+# .env 파일 권한 설정
+chmod 600 .env
 ```
 
 ## 🔄 4단계: 계정 설정 (멀티 계정)
@@ -70,23 +74,47 @@ nano config/accounts.json
 python3 migrate_to_multi_account.py
 ```
 
-## 🌐 5단계: Nginx 웹훅 설정
+## 🌐 5단계: Nginx 웹훅 설정 (포트 80)
 
 ```bash
-# Nginx 설정 복사
-cp nginx/lighter-api.conf /etc/nginx/sites-available/lighter-api
+# IP 기반 Nginx 설정 생성 (도메인 없이)
+cat > /etc/nginx/sites-available/lighter-api-ip << 'EOF'
+server {
+    listen 80 default_server;
+    server_name _;
 
-# 사이트 활성화
-ln -sf /etc/nginx/sites-available/lighter-api /etc/nginx/sites-enabled/
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 
-# 기본 사이트 비활성화 (필요시)
-rm -f /etc/nginx/sites-enabled/default
+    location /webhook/ {
+        proxy_pass http://127.0.0.1:8000/webhook/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# 기존 설정 제거하고 새 설정 활성화
+rm -f /etc/nginx/sites-enabled/*
+ln -sf /etc/nginx/sites-available/lighter-api-ip /etc/nginx/sites-enabled/lighter-api-ip
 
 # Nginx 설정 테스트
 nginx -t
-
-# SSL 인증서 발급
-certbot --nginx -d ypab5.com
 
 # Nginx 재시작
 systemctl restart nginx
@@ -145,11 +173,21 @@ systemctl status lighter-api
 # 로컬 애플리케이션 테스트
 curl http://localhost:8000/health
 
-# 웹훅 엔드포인트 테스트
-curl https://ypab5.com/webhook/health
+# 외부 웹훅 엔드포인트 테스트 (포트 80)
+curl http://45.76.210.218/webhook/health
 
 # 계정 정보 확인
-curl https://ypab5.com/api/accounts/
+curl http://45.76.210.218/api/accounts/
+
+# 웹훅 시그널 테스트 (중요!)
+curl -X POST http://45.76.210.218/webhook/tradingview \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
+
+# 특정 계정 웹훅 테스트
+curl -X POST http://45.76.210.218/webhook/tradingview/account/143145 \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"ETH","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 
 # 로그 확인
 journalctl -u lighter-api -f
@@ -206,9 +244,28 @@ netstat -tulpn | grep :8000
 
 ## 🎯 TradingView 설정
 
-업데이트된 웹훅 URL:
-- **모든 계정**: `https://ypab5.com/webhook/tradingview`
-- **특정 계정**: `https://ypab5.com/webhook/tradingview/account/143145`
+**웹훅 URL (IP 기반):**
+- **모든 계정**: `http://YOUR_VPS_IP/webhook/tradingview`
+- **특정 계정**: `http://YOUR_VPS_IP/webhook/tradingview/account/143145`
+
+**예시 (IP: 45.76.210.218):**
+- **모든 계정**: `http://45.76.210.218/webhook/tradingview`
+- **특정 계정**: `http://45.76.210.218/webhook/tradingview/account/143145`
+
+**웹훅 메시지 형식 (JSON):**
+```json
+{
+  "symbol": "{{ticker}}",
+  "sale": "long",
+  "leverage": 1,
+  "secret": "lighter_to_the_moon_2918"
+}
+```
+
+**중요 사항:**
+- 반드시 JSON 본문에 `"secret": "lighter_to_the_moon_2918"` 포함 필요
+- 트레이딩뷰는 포트 80만 지원하므로 HTTP 사용
+- IP 제한이 해제되어 모든 IP에서 접근 가능
 
 ## 🚨 트러블슈팅
 
