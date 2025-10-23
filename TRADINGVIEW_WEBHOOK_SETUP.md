@@ -1,73 +1,108 @@
-# 🔗 TradingView 웹훅 설정 가이드
+# 🔗 TradingView 웹훅 설정 가이드 (IP 기반)
 
 ## 🎯 핵심 포인트
 
 TradingView 웹훅은 **포트 80(HTTP) 또는 443(HTTPS)에서만** 작동합니다.
 현재 시스템은 포트 8000에서 실행되므로 **Nginx 리버스 프록시**가 필요합니다.
 
+**도메인이 필요 없습니다!** VPS IP 주소를 직접 사용합니다.
+
 ## 🛠️ 설정 방법
 
-### 1. VPS에 Nginx 설정
+### 1. VPS에 IP 기반 Nginx 설정
 
 ```bash
-# 자동 설정 스크립트 실행
-./setup_port80_webhook.sh
+# IP 기반 Nginx 설정 (도메인 불필요)
+cat > /etc/nginx/sites-available/lighter-api-ip << 'EOF'
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /webhook/ {
+        proxy_pass http://127.0.0.1:8000/webhook/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# 기존 설정 제거하고 새 설정 활성화
+rm -f /etc/nginx/sites-enabled/*
+ln -sf /etc/nginx/sites-available/lighter-api-ip /etc/nginx/sites-enabled/lighter-api-ip
+
+# Nginx 재시작
+nginx -t && systemctl restart nginx
+
+# 방화벽 설정
+ufw allow 80/tcp
 ```
 
-또는 수동 설정:
+### 2. IP 제한 해제 설정 (중요!)
 
 ```bash
-# 1. Nginx 설정 파일 업로드
-scp nginx/lighter-api.conf root@45.76.210.218:/etc/nginx/sites-available/lighter-api
+# 환경 변수에 IP 제한 해제 추가
+echo "TRADINGVIEW_ALLOWED_IPS=0.0.0.0" >> /opt/lighter_api/.env
 
-# 2. 사이트 활성화
-ssh root@45.76.210.218 'ln -sf /etc/nginx/sites-available/lighter-api /etc/nginx/sites-enabled/'
-
-# 3. Nginx 재시작
-ssh root@45.76.210.218 'nginx -t && systemctl restart nginx'
-
-# 4. 방화벽 설정
-ssh root@45.76.210.218 'ufw allow 80/tcp && ufw allow 443/tcp'
+# 애플리케이션 재시작
+systemctl restart lighter-api
 ```
 
-### 2. SSL 인증서 설정 (HTTPS 필수)
+### 3. 배포 확인
 
 ```bash
-# Certbot 설치
-ssh root@45.76.210.218 'apt install -y certbot python3-certbot-nginx'
+# 로컬 테스트
+curl http://localhost:8000/health
 
-# SSL 인증서 발급
-ssh root@45.76.210.218 'certbot --nginx -d ypab5.com'
+# 외부 접근 테스트 (IP 변경 필요)
+curl http://45.76.210.218/webhook/health
+
+# 웹훅 시그널 테스트
+curl -X POST http://45.76.210.218/webhook/tradingview \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 ```
 
-### 3. 애플리케이션 실행 확인
+## 📡 TradingView 웹훅 URL (IP 기반)
 
-```bash
-# 서비스 상태 확인
-ssh root@45.76.210.218 'systemctl status lighter-api'
+### ✅ 실제 사용할 URL들
 
-# 포트 8000에서 실행 확인
-ssh root@45.76.210.218 'curl http://localhost:8000/health'
-```
-
-## 📡 TradingView 웹훅 URL
-
-### ✅ 사용할 URL들
+**YOUR_VPS_IP를 실제 VPS IP로 변경하세요!**
 
 #### 🎯 특정 계정 (권장)
 ```
-https://ypab5.com/webhook/tradingview/account/143145
+http://YOUR_VPS_IP/webhook/tradingview/account/143145
 ```
+**예시:** `http://45.76.210.218/webhook/tradingview/account/143145`
 
 #### 🎯 모든 계정
 ```
-https://ypab5.com/webhook/tradingview
+http://YOUR_VPS_IP/webhook/tradingview
 ```
+**예시:** `http://45.76.210.218/webhook/tradingview`
 
 #### 🔍 헬스 체크
 ```
-https://ypab5.com/webhook/health
+http://YOUR_VPS_IP/webhook/health
 ```
+**예시:** `http://45.76.210.218/webhook/health`
 
 ## 🧪 TradingView 알림 설정
 
@@ -95,36 +130,35 @@ alertcondition(buy_condition, title="Buy Signal", message='{"secret": "lighter_t
 alertcondition(sell_condition, title="Sell Signal", message='{"secret": "lighter_to_the_moon_2918", "action": "sell", "symbol": "{{ticker}}", "leverage": 1}')
 ```
 
-### 알림 메시지 템플릿
+### 🎯 웹훅 메시지 템플릿 (올바른 형식)
 
-#### 🔹 특정 계정 (account_index 143145)
+#### 🔹 LONG 시그널 (모든 계정)
 ```json
 {
-  "secret": "lighter_to_the_moon_2918",
-  "action": "{{strategy.order.action}}",
   "symbol": "{{ticker}}",
+  "sale": "long",
   "leverage": 1,
-  "account_index": 143145
+  "secret": "lighter_to_the_moon_2918"
 }
 ```
 
-#### 🔹 모든 계정
+#### 🔹 SHORT 시그널 (모든 계정)
 ```json
 {
-  "secret": "lighter_to_the_moon_2918",
-  "action": "{{strategy.order.action}}",
   "symbol": "{{ticker}}",
-  "leverage": 1
+  "sale": "short",
+  "leverage": 1,
+  "secret": "lighter_to_the_moon_2918"
 }
 ```
 
-#### 🔹 포지션 종료
+#### 🔹 포지션 종료 (모든 계정)
 ```json
 {
-  "secret": "lighter_to_the_moon_2918",
-  "action": "close",
   "symbol": "{{ticker}}",
-  "leverage": 1
+  "sale": "close",
+  "leverage": 1,
+  "secret": "lighter_to_the_moon_2918"
 }
 ```
 
@@ -143,24 +177,32 @@ ssh root@45.76.210.218 'journalctl -u lighter-api -f'
 ssh root@45.76.210.218 'ufw status'
 ```
 
-### 2. SSL 인증서 문제
+### 2. IP 접근 문제
 
 ```bash
-# 인증서 상태 확인
-ssh root@45.76.210.218 'certbot certificates'
+# IP 직접 테스트
+curl http://45.76.210.218/webhook/health
 
-# 인증서 갱신
-ssh root@45.76.210.218 'certbot renew'
+# 포트 확인
+ssh root@45.76.210.218 'netstat -tulpn | grep :80'
+
+# Nginx 상태 확인
+ssh root@45.76.210.218 'systemctl status nginx'
 ```
 
-### 3. 도메인 연결 확인
+### 3. 웹훅 인증 실패 (401 에러)
 
 ```bash
-# DNS 확인
-nslookup ypab5.com
+# 시크릿 토큰 확인
+ssh root@45.76.210.218 'grep TRADINGVIEW_SECRET_TOKEN /opt/lighter_api/.env'
 
-# 도메인 접근 테스트
-curl -I https://ypab5.com/webhook/health
+# IP 제한 확인
+ssh root@45.76.210.218 'grep TRADINGVIEW_ALLOWED_IPS /opt/lighter_api/.env'
+
+# 올바른 웹훅 테스트
+curl -X POST http://45.76.210.218/webhook/tradingview \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 ```
 
 ## 📊 모니터링
@@ -178,94 +220,68 @@ ssh root@45.76.210.218 'journalctl -u lighter-api -f --no-pager'
 ssh root@45.76.210.218 'htop'
 ```
 
-### 웹훅 테스트
+### 웹훅 테스트 (IP 기반)
 
 ```bash
-# 수동 웹훅 테스트
-curl -X POST https://ypab5.com/webhook/tradingview/account/143145 \
+# 수동 웹훅 테스트 (IP 주소 사용)
+curl -X POST http://45.76.210.218/webhook/tradingview/account/143145 \
   -H "Content-Type: application/json" \
   -d '{
-    "secret": "lighter_to_the_moon_2918",
-    "action": "buy",
     "symbol": "BTC",
-    "leverage": 1
+    "sale": "long",
+    "leverage": 1,
+    "secret": "lighter_to_the_moon_2918"
+  }'
+
+# 모든 계정 테스트
+curl -X POST http://45.76.210.218/webhook/tradingview \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "BTC",
+    "sale": "long",
+    "leverage": 1,
+    "secret": "lighter_to_the_moon_2918"
   }'
 ```
 
-## 🎯 시스템 구조
+## 🎯 최종 요약
 
-```
-TradingView → 포트 443 (HTTPS) → Nginx → 포트 8000 (애플리케이션)
-             https://ypab5.com      ↓     http://localhost:8000
-                                   리버스 프록시
-```
+### ✅ 핵심 설정사항
 
-## ⚡ 성능 최적화
+1. **웹훅 URL**: `http://YOUR_VPS_IP/webhook/tradingview`
+2. **메시지 형식**: JSON에 `"secret": "lighter_to_the_moon_2918"` 필수
+3. **IP 제한**: `TRADINGVIEW_ALLOWED_IPS=0.0.0.0` (모든 IP 허용)
+4. **포트 설정**: Nginx 포트 80 → 애플리케이션 포트 8000
 
-### Nginx 설정 튜닝
-
-```nginx
-# /etc/nginx/nginx.conf에 추가
-worker_processes auto;
-worker_connections 1024;
-
-# keepalive 설정
-keepalive_timeout 30;
-keepalive_requests 100;
-
-# gzip 압축
-gzip on;
-gzip_types application/json text/plain;
-```
-
-### 로그 로테이션
+### 🔧 핵심 명령어
 
 ```bash
-# 로그 로테이션 설정
-ssh root@45.76.210.218 'cat > /etc/logrotate.d/lighter-webhook << EOF
-/var/log/nginx/webhook_*.log {
-    daily
-    rotate 7
-    compress
-    delaycompress
-    missingok
-    notifempty
-    postrotate
-        systemctl reload nginx
-    endscript
-}
-EOF'
+# IP 제한 해제
+echo "TRADINGVIEW_ALLOWED_IPS=0.0.0.0" >> /opt/lighter_api/.env
+systemctl restart lighter-api
+
+# 웹훅 테스트
+curl -X POST http://YOUR_VPS_IP/webhook/tradingview \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 ```
 
-## 🔐 보안 설정
+### 📋 체크리스트
 
-### IP 화이트리스트 (선택사항)
+- [ ] VPS IP 주소 확인
+- [ ] Nginx 포트 80 설정 완료
+- [ ] IP 제한 해제 설정
+- [ ] 웹훅 테스트 성공
+- [ ] 트레이딩뷰 알림 설정 완료
 
-```nginx
-# Nginx 설정에 추가
-location /webhook/ {
-    # TradingView IP 범위
-    allow 52.89.214.238;
-    allow 34.212.75.30;
-    allow 52.32.178.7;
-    allow 54.218.53.128;
-    allow 52.36.31.181;
-    deny all;
+**도메인이 필요 없습니다! IP 주소만 있으면 됩니다.**
 
-    proxy_pass http://127.0.0.1:8000/webhook/;
-    # ... 기타 설정
-}
+### 📊 시스템 흐름
+
+```
+TradingView → 포트 80 (HTTP) → Nginx → 포트 8000 (애플리케이션)
+             http://VPS_IP       ↓     http://localhost:8000
+                                리버스 프록시
 ```
 
-## ✅ 설정 완료 체크리스트
-
-- [ ] Nginx 설치 및 설정
-- [ ] SSL 인증서 설정
-- [ ] 방화벽 포트 80/443 허용
-- [ ] 애플리케이션 포트 8000에서 실행
-- [ ] 도메인 DNS 연결 확인
-- [ ] 웹훅 URL 테스트 성공
-- [ ] TradingView 알림 설정 완료
-- [ ] 로그 모니터링 설정
-
-이제 TradingView에서 https://ypab5.com/webhook/tradingview 로 웹훅을 보낼 수 있습니다!
+**🎉 설정 완료! 이제 트레이딩뷰에서 웹훅을 사용할 수 있습니다.**
