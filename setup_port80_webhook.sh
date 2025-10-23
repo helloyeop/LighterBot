@@ -3,7 +3,7 @@
 # Setup script for TradingView webhook support on port 80/443
 # This script configures Nginx to proxy webhook requests to the application
 
-VPS_IP="158.247.223.133"
+VPS_IP="45.76.210.218"
 VPS_USER="root"
 DOMAIN="ypab5.com"
 

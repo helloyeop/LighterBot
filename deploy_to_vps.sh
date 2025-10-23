@@ -3,7 +3,7 @@
 # VPS Deployment Script for Lighter API
 # Run this script to deploy the application to your VPS
 
-VPS_IP="158.247.223.133"
+VPS_IP="45.76.210.218"
 VPS_USER="root"
 APP_DIR="/opt/lighter_api"
 

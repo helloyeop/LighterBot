@@ -18,36 +18,36 @@ TradingView 웹훅은 **포트 80(HTTP) 또는 443(HTTPS)에서만** 작동합�
 
 ```bash
 # 1. Nginx 설정 파일 업로드
-scp nginx/lighter-api.conf root@158.247.223.133:/etc/nginx/sites-available/lighter-api
+scp nginx/lighter-api.conf root@45.76.210.218:/etc/nginx/sites-available/lighter-api
 
 # 2. 사이트 활성화
-ssh root@158.247.223.133 'ln -sf /etc/nginx/sites-available/lighter-api /etc/nginx/sites-enabled/'
+ssh root@45.76.210.218 'ln -sf /etc/nginx/sites-available/lighter-api /etc/nginx/sites-enabled/'
 
 # 3. Nginx 재시작
-ssh root@158.247.223.133 'nginx -t && systemctl restart nginx'
+ssh root@45.76.210.218 'nginx -t && systemctl restart nginx'
 
 # 4. 방화벽 설정
-ssh root@158.247.223.133 'ufw allow 80/tcp && ufw allow 443/tcp'
+ssh root@45.76.210.218 'ufw allow 80/tcp && ufw allow 443/tcp'
 ```
 
 ### 2. SSL 인증서 설정 (HTTPS 필수)
 
 ```bash
 # Certbot 설치
-ssh root@158.247.223.133 'apt install -y certbot python3-certbot-nginx'
+ssh root@45.76.210.218 'apt install -y certbot python3-certbot-nginx'
 
 # SSL 인증서 발급
-ssh root@158.247.223.133 'certbot --nginx -d ypab5.com'
+ssh root@45.76.210.218 'certbot --nginx -d ypab5.com'
 ```
 
 ### 3. 애플리케이션 실행 확인
 
 ```bash
 # 서비스 상태 확인
-ssh root@158.247.223.133 'systemctl status lighter-api'
+ssh root@45.76.210.218 'systemctl status lighter-api'
 
 # 포트 8000에서 실행 확인
-ssh root@158.247.223.133 'curl http://localhost:8000/health'
+ssh root@45.76.210.218 'curl http://localhost:8000/health'
 ```
 
 ## 📡 TradingView 웹훅 URL
@@ -134,23 +134,23 @@ alertcondition(sell_condition, title="Sell Signal", message='{"secret": "lighter
 
 ```bash
 # Nginx 로그 확인
-ssh root@158.247.223.133 'tail -f /var/log/nginx/webhook_access.log'
+ssh root@45.76.210.218 'tail -f /var/log/nginx/webhook_access.log'
 
 # 애플리케이션 로그 확인
-ssh root@158.247.223.133 'journalctl -u lighter-api -f'
+ssh root@45.76.210.218 'journalctl -u lighter-api -f'
 
 # 방화벽 상태 확인
-ssh root@158.247.223.133 'ufw status'
+ssh root@45.76.210.218 'ufw status'
 ```
 
 ### 2. SSL 인증서 문제
 
 ```bash
 # 인증서 상태 확인
-ssh root@158.247.223.133 'certbot certificates'
+ssh root@45.76.210.218 'certbot certificates'
 
 # 인증서 갱신
-ssh root@158.247.223.133 'certbot renew'
+ssh root@45.76.210.218 'certbot renew'
 ```
 
 ### 3. 도메인 연결 확인
@@ -169,13 +169,13 @@ curl -I https://ypab5.com/webhook/health
 
 ```bash
 # 웹훅 요청 로그
-ssh root@158.247.223.133 'tail -f /var/log/nginx/webhook_access.log'
+ssh root@45.76.210.218 'tail -f /var/log/nginx/webhook_access.log'
 
 # 애플리케이션 로그
-ssh root@158.247.223.133 'journalctl -u lighter-api -f --no-pager'
+ssh root@45.76.210.218 'journalctl -u lighter-api -f --no-pager'
 
 # 시스템 리소스
-ssh root@158.247.223.133 'htop'
+ssh root@45.76.210.218 'htop'
 ```
 
 ### 웹훅 테스트
@@ -222,7 +222,7 @@ gzip_types application/json text/plain;
 
 ```bash
 # 로그 로테이션 설정
-ssh root@158.247.223.133 'cat > /etc/logrotate.d/lighter-webhook << EOF
+ssh root@45.76.210.218 'cat > /etc/logrotate.d/lighter-webhook << EOF
 /var/log/nginx/webhook_*.log {
     daily
     rotate 7
