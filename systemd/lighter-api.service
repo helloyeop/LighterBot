@@ -1,0 +1,17 @@
+[Unit]
+Description=Lighter API Trading Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/lighter_api
+Environment=PATH=/opt/lighter_api/venv/bin
+ExecStart=/opt/lighter_api/venv/bin/python /opt/lighter_api/main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
