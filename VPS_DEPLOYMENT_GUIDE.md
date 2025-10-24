@@ -3,16 +3,15 @@
 ## 📋 사전 준비
 
 ### VPS 정보
-- **IP**: 45.76.210.218
+- **IP**: YOUR_VPS_IP (예: 45.76.210.218)
 - **사용자**: root
-- **도메인**: ypab5.com
-- **포트**: 8000 (애플리케이션), 80/443 (웹훅)
+- **포트**: 8000 (애플리케이션), 80 (웹훅)
 
 ## 🔧 1단계: VPS 기본 설정
 
 ```bash
 # VPS 접속
-ssh root@45.76.210.218
+ssh root@YOUR_VPS_IP
 
 # 시스템 업데이트
 apt update && apt upgrade -y
@@ -174,18 +173,18 @@ systemctl status lighter-api
 curl http://localhost:8000/health
 
 # 외부 웹훅 엔드포인트 테스트 (포트 80)
-curl http://45.76.210.218/webhook/health
+curl http://YOUR_VPS_IP/webhook/health
 
 # 계정 정보 확인
-curl http://45.76.210.218/api/accounts/
+curl http://YOUR_VPS_IP/api/accounts/
 
 # 웹훅 시그널 테스트 (중요!)
-curl -X POST http://45.76.210.218/webhook/tradingview \
+curl -X POST http://YOUR_VPS_IP/webhook/tradingview \
   -H "Content-Type: application/json" \
   -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 
 # 특정 계정 웹훅 테스트
-curl -X POST http://45.76.210.218/webhook/tradingview/account/143145 \
+curl -X POST http://YOUR_VPS_IP/webhook/tradingview/account/143145 \
   -H "Content-Type: application/json" \
   -d '{"symbol":"ETH","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 
@@ -248,9 +247,9 @@ netstat -tulpn | grep :8000
 - **모든 계정**: `http://YOUR_VPS_IP/webhook/tradingview`
 - **특정 계정**: `http://YOUR_VPS_IP/webhook/tradingview/account/143145`
 
-**예시 (IP: 45.76.210.218):**
-- **모든 계정**: `http://45.76.210.218/webhook/tradingview`
-- **특정 계정**: `http://45.76.210.218/webhook/tradingview/account/143145`
+**예시 (YOUR_VPS_IP를 실제 IP로 변경):**
+- **모든 계정**: `http://YOUR_VPS_IP/webhook/tradingview`
+- **특정 계정**: `http://YOUR_VPS_IP/webhook/tradingview/account/143145`
 
 **웹훅 메시지 형식 (JSON):**
 ```json
@@ -287,11 +286,11 @@ python3 main.py
 # Nginx 상태 확인
 systemctl status nginx
 
-# SSL 인증서 확인
-certbot certificates
-
 # 방화벽 확인
 ufw status
+
+# 포트 80 확인
+netstat -tulpn | grep :80
 ```
 
 ### 3. Git 권한 문제
@@ -322,11 +321,12 @@ journalctl --rotate
 journalctl --vacuum-time=30d
 ```
 
-### SSL 인증서 갱신
+### IP 제한 확인
 
 ```bash
-# 자동 갱신 확인 (certbot이 자동으로 설정함)
-certbot renew --dry-run
+# IP 제한 설정 확인
+grep TRADINGVIEW_ALLOWED_IPS /opt/lighter_api/.env
+# 모든 IP 허용 시: TRADINGVIEW_ALLOWED_IPS=0.0.0.0
 ```
 
 ## ✅ 배포 완료 체크리스트
@@ -334,10 +334,9 @@ certbot renew --dry-run
 - [ ] VPS에 필수 패키지 설치
 - [ ] Git에서 코드 클론
 - [ ] 가상환경 및 의존성 설치
-- [ ] .env 파일 설정
+- [ ] .env 파일 설정 (TRADINGVIEW_ALLOWED_IPS=0.0.0.0 포함)
 - [ ] accounts.json 설정
-- [ ] Nginx 리버스 프록시 설정
-- [ ] SSL 인증서 발급
+- [ ] Nginx 리버스 프록시 설정 (포트 80)
 - [ ] 방화벽 설정
 - [ ] systemd 서비스 등록
 - [ ] 웹훅 엔드포인트 테스트
@@ -347,5 +346,7 @@ certbot renew --dry-run
 
 이제 멀티 계정 거래 시스템이 VPS에서 실행되고 있습니다!
 
-**웹훅 URL**: https://ypab5.com/webhook/tradingview
-**관리 API**: https://ypab5.com/api/accounts/
+**웹훅 URL**: `http://YOUR_VPS_IP/webhook/tradingview`
+**관리 API**: `http://YOUR_VPS_IP/api/accounts/`
+
+**중요**: YOUR_VPS_IP를 실제 VPS IP 주소로 변경하세요!

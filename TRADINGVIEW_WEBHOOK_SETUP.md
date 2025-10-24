@@ -71,11 +71,11 @@ systemctl restart lighter-api
 # 로컬 테스트
 curl http://localhost:8000/health
 
-# 외부 접근 테스트 (IP 변경 필요)
-curl http://45.76.210.218/webhook/health
+# 외부 접근 테스트 (YOUR_VPS_IP를 실제 IP로 변경)
+curl http://YOUR_VPS_IP/webhook/health
 
 # 웹훅 시그널 테스트
-curl -X POST http://45.76.210.218/webhook/tradingview \
+curl -X POST http://YOUR_VPS_IP/webhook/tradingview \
   -H "Content-Type: application/json" \
   -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 ```
@@ -90,19 +90,19 @@ curl -X POST http://45.76.210.218/webhook/tradingview \
 ```
 http://YOUR_VPS_IP/webhook/tradingview/account/143145
 ```
-**예시:** `http://45.76.210.218/webhook/tradingview/account/143145`
+**예시:** `http://YOUR_VPS_IP/webhook/tradingview/account/143145`
 
 #### 🎯 모든 계정
 ```
 http://YOUR_VPS_IP/webhook/tradingview
 ```
-**예시:** `http://45.76.210.218/webhook/tradingview`
+**예시:** `http://YOUR_VPS_IP/webhook/tradingview`
 
 #### 🔍 헬스 체크
 ```
 http://YOUR_VPS_IP/webhook/health
 ```
-**예시:** `http://45.76.210.218/webhook/health`
+**예시:** `http://YOUR_VPS_IP/webhook/health`
 
 ## 🧪 TradingView 알림 설정
 
@@ -168,39 +168,39 @@ alertcondition(sell_condition, title="Sell Signal", message='{"secret": "lighter
 
 ```bash
 # Nginx 로그 확인
-ssh root@45.76.210.218 'tail -f /var/log/nginx/webhook_access.log'
+ssh root@YOUR_VPS_IP 'tail -f /var/log/nginx/webhook_access.log'
 
 # 애플리케이션 로그 확인
-ssh root@45.76.210.218 'journalctl -u lighter-api -f'
+ssh root@YOUR_VPS_IP 'journalctl -u lighter-api -f'
 
 # 방화벽 상태 확인
-ssh root@45.76.210.218 'ufw status'
+ssh root@YOUR_VPS_IP 'ufw status'
 ```
 
 ### 2. IP 접근 문제
 
 ```bash
 # IP 직접 테스트
-curl http://45.76.210.218/webhook/health
+curl http://YOUR_VPS_IP/webhook/health
 
 # 포트 확인
-ssh root@45.76.210.218 'netstat -tulpn | grep :80'
+ssh root@YOUR_VPS_IP 'netstat -tulpn | grep :80'
 
 # Nginx 상태 확인
-ssh root@45.76.210.218 'systemctl status nginx'
+ssh root@YOUR_VPS_IP 'systemctl status nginx'
 ```
 
 ### 3. 웹훅 인증 실패 (401 에러)
 
 ```bash
 # 시크릿 토큰 확인
-ssh root@45.76.210.218 'grep TRADINGVIEW_SECRET_TOKEN /opt/lighter_api/.env'
+ssh root@YOUR_VPS_IP 'grep TRADINGVIEW_SECRET_TOKEN /opt/lighter_api/.env'
 
 # IP 제한 확인
-ssh root@45.76.210.218 'grep TRADINGVIEW_ALLOWED_IPS /opt/lighter_api/.env'
+ssh root@YOUR_VPS_IP 'grep TRADINGVIEW_ALLOWED_IPS /opt/lighter_api/.env'
 
 # 올바른 웹훅 테스트
-curl -X POST http://45.76.210.218/webhook/tradingview \
+curl -X POST http://YOUR_VPS_IP/webhook/tradingview \
   -H "Content-Type: application/json" \
   -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 ```
@@ -211,20 +211,20 @@ curl -X POST http://45.76.210.218/webhook/tradingview \
 
 ```bash
 # 웹훅 요청 로그
-ssh root@45.76.210.218 'tail -f /var/log/nginx/webhook_access.log'
+ssh root@YOUR_VPS_IP 'tail -f /var/log/nginx/webhook_access.log'
 
 # 애플리케이션 로그
-ssh root@45.76.210.218 'journalctl -u lighter-api -f --no-pager'
+ssh root@YOUR_VPS_IP 'journalctl -u lighter-api -f --no-pager'
 
 # 시스템 리소스
-ssh root@45.76.210.218 'htop'
+ssh root@YOUR_VPS_IP 'htop'
 ```
 
 ### 웹훅 테스트 (IP 기반)
 
 ```bash
-# 수동 웹훅 테스트 (IP 주소 사용)
-curl -X POST http://45.76.210.218/webhook/tradingview/account/143145 \
+# 수동 웹훅 테스트 (YOUR_VPS_IP를 실제 IP로 변경)
+curl -X POST http://YOUR_VPS_IP/webhook/tradingview/account/143145 \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "BTC",
@@ -234,7 +234,7 @@ curl -X POST http://45.76.210.218/webhook/tradingview/account/143145 \
   }'
 
 # 모든 계정 테스트
-curl -X POST http://45.76.210.218/webhook/tradingview \
+curl -X POST http://YOUR_VPS_IP/webhook/tradingview \
   -H "Content-Type: application/json" \
   -d '{
     "symbol": "BTC",

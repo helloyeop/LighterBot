@@ -100,18 +100,18 @@ ufw allow 443/tcp
 =============
 systemctl status lighter-api
 curl http://localhost:8000/health
-curl http://$VPS_IP/webhook/health
+curl http://${VPS_IP}/webhook/health
 
 📋 8. 웹훅 테스트
 ===============
-curl -X POST http://$VPS_IP/webhook/tradingview \\
+curl -X POST http://${VPS_IP}/webhook/tradingview \\
   -H "Content-Type: application/json" \\
   -d '{"symbol":"BTC","sale":"long","leverage":1,"secret":"lighter_to_the_moon_2918"}'
 
 🎯 트레이딩뷰 웹훅 URL:
 =====================
-모든 계정: http://$VPS_IP/webhook/tradingview
-특정 계정: http://$VPS_IP/webhook/tradingview/account/143145
+모든 계정: http://${VPS_IP}/webhook/tradingview
+특정 계정: http://${VPS_IP}/webhook/tradingview/account/143145
 
 📝 웹훅 메시지 형식:
 ================
@@ -124,7 +124,7 @@ curl -X POST http://$VPS_IP/webhook/tradingview \\
 
 ✅ 완료되면 이 스크립트로 테스트:
 ==============================
-./test_vps_deployment.sh $VPS_IP
+./test_vps_deployment.sh ${VPS_IP}
 
 EOF
 
