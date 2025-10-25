@@ -59,6 +59,11 @@ async def verify_tradingview_ip(request: Request) -> bool:
                 client_host=request.client.host if request.client else None,
                 allowed_ips=allowed_ips)
 
+    # 0.0.0.0은 모든 IP 허용을 의미
+    if allowed_ips == ["0.0.0.0"] or "0.0.0.0" in allowed_ips:
+        logger.info("All IPs allowed (0.0.0.0 setting)", ip=client_ip, allowed_ips=allowed_ips)
+        return True
+
     # 로컬 테스트용 IP 추가
     if client_ip in ["127.0.0.1", "::1", "localhost"]:
         logger.info("Local webhook request allowed", ip=client_ip)
