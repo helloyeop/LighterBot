@@ -18,6 +18,7 @@
 ```bash
 # VPS 접속
 ssh root@YOUR_VPS_IP
+# 만약 접속 안될 시 (Host key verification failed) ssh-keygen -R YOUR_VPS_IP
 
 # 시스템 업데이트
 apt update && apt upgrade -y
@@ -54,11 +55,13 @@ pip install -r requirements.txt
 cat > .env << 'EOF'
 LIGHTER_API_KEY=your_api_key_here
 LIGHTER_API_SECRET=your_api_secret_here
+LIGHTER_NETWORK=mainnet
+LIGHTER_ENDPOINT=https://mainnet.zklighter.elliot.ai
 LIGHTER_ACCOUNT_INDEX=143145
 LIGHTER_API_KEY_INDEX=3
 TRADINGVIEW_SECRET_TOKEN=lighter_to_the_moon_2918
 PORT=8000
-HOST=127.0.0.1
+HOST=0.0.0.0
 TRADINGVIEW_ALLOWED_IPS=0.0.0.0
 EOF
 
@@ -66,6 +69,7 @@ chmod 600 .env
 ```
 - [ ] API 키/시크릿 입력
 - [ ] 계정 인덱스 설정
+- [ ] HOST=0.0.0.0 설정 (외부 접근 허용)
 - [ ] IP 제한 해제 설정 (TRADINGVIEW_ALLOWED_IPS=0.0.0.0)
 - [ ] .env 권한 설정 (600)
 
@@ -83,11 +87,20 @@ nano config/accounts.json
 
 ### 5. Nginx 설정 (포트 80)
 ```bash
+# 기존 설정 제거
+rm -f /etc/nginx/sites-enabled/*
+
 # Nginx 설정 파일 생성
-cat > /etc/nginx/sites-available/lighter-api-ip << 'EOF'
+cat > /etc/nginx/sites-available/lighter-api << 'EOF'
 server {
     listen 80 default_server;
+    listen [::]:80 default_server;
     server_name _;
+
+    # 타임아웃 설정
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
 
     location / {
         proxy_pass http://127.0.0.1:8000;
@@ -116,8 +129,7 @@ server {
 EOF
 
 # 설정 활성화
-rm -f /etc/nginx/sites-enabled/*
-ln -sf /etc/nginx/sites-available/lighter-api-ip /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/lighter-api /etc/nginx/sites-enabled/lighter-api
 
 # Nginx 테스트 및 재시작
 nginx -t && systemctl restart nginx
