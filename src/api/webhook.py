@@ -31,8 +31,12 @@ class TradingViewSignal(BaseModel):
 
     @validator('sale', pre=True, always=True)
     def set_sale_from_action(cls, v, values):
+        # sale 필드가 이미 있으면 그대로 사용
+        if v:
+            return v
+
         # action 필드가 있으면 sale 필드로 변환
-        if not v and 'action' in values:
+        if 'action' in values and values['action']:
             action = values['action']
             if action in ['buy', 'long']:
                 return 'long'
@@ -40,7 +44,8 @@ class TradingViewSignal(BaseModel):
                 return 'short'
             elif action == 'close':
                 return 'close'
-        return v or 'long'  # 기본값
+
+        return 'long'  # 기본값
 
 
 async def verify_tradingview_ip(request: Request) -> bool:
@@ -96,12 +101,15 @@ async def receive_tradingview_webhook(
         if not await verify_secret_token(signal):
             raise HTTPException(status_code=401, detail="Invalid secret token")
 
+        # 디버깅을 위한 전체 신호 로깅
         logger.info(
-            "Webhook received",
+            "Webhook received - Full Signal",
             sale=signal.sale,
+            action=signal.action,
             symbol=signal.symbol,
             quantity=signal.quantity,
-            leverage=signal.leverage
+            leverage=signal.leverage,
+            raw_data=signal.dict()
         )
 
         # Add to background task queue for processing
@@ -150,13 +158,16 @@ async def receive_tradingview_webhook_for_account(
         # Override account_index from URL path
         signal.account_index = account_index
 
+        # 디버깅을 위한 전체 신호 로깅
         logger.info(
-            "Webhook received for specific account",
+            "Webhook received for specific account - Full Signal",
             account_index=account_index,
             sale=signal.sale,
+            action=signal.action,
             symbol=signal.symbol,
             quantity=signal.quantity,
-            leverage=signal.leverage
+            leverage=signal.leverage,
+            raw_data=signal.dict()
         )
 
         # Process for specific account
