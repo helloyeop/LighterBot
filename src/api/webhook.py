@@ -138,7 +138,6 @@ async def receive_tradingview_webhook(
 @router.post("/tradingview/account/{account_index}")
 async def receive_tradingview_webhook_for_account(
     account_index: int,
-    signal: TradingViewSignal,
     request: Request,
     background_tasks: BackgroundTasks
 ):
@@ -147,6 +146,22 @@ async def receive_tradingview_webhook_for_account(
     URL: /webhook/tradingview/account/143145
     """
     try:
+        # Get and log raw request body first
+        body = await request.body()
+        body_str = body.decode('utf-8')
+        logger.info(f"Raw webhook request for account {account_index}: {body_str}")
+
+        # Parse the signal from raw body
+        try:
+            signal_data = json.loads(body_str)
+            signal = TradingViewSignal(**signal_data)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in webhook request: {e}")
+            raise HTTPException(status_code=400, detail="Invalid JSON")
+        except Exception as e:
+            logger.error(f"Failed to parse signal: {e}, body: {body_str}")
+            raise HTTPException(status_code=422, detail=f"Invalid signal format: {str(e)}")
+
         # IP verification
         if not await verify_tradingview_ip(request):
             raise HTTPException(status_code=403, detail="Unauthorized IP")
