@@ -154,6 +154,29 @@ async def receive_tradingview_webhook_for_account(
         # Parse the signal from raw body
         try:
             signal_data = json.loads(body_str)
+
+            # Convert sale field if needed (buy -> long, sell -> short)
+            if 'sale' in signal_data:
+                sale_value = signal_data['sale']
+                if sale_value in ['buy', 'long']:
+                    signal_data['sale'] = 'long'
+                elif sale_value in ['sell', 'short']:
+                    signal_data['sale'] = 'short'
+                elif sale_value == 'close':
+                    signal_data['sale'] = 'close'
+
+            # Also check action field if sale is not present
+            elif 'action' in signal_data:
+                action_value = signal_data['action']
+                if action_value in ['buy', 'long']:
+                    signal_data['sale'] = 'long'
+                elif action_value in ['sell', 'short']:
+                    signal_data['sale'] = 'short'
+                elif action_value == 'close':
+                    signal_data['sale'] = 'close'
+                # Remove action field to avoid confusion
+                del signal_data['action']
+
             signal = TradingViewSignal(**signal_data)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in webhook request: {e}")
