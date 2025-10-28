@@ -275,45 +275,37 @@ class LighterAccountClientV2:
         self._nonce_lock = asyncio.Lock()  # Lock for nonce updates
         self._last_order_index = None
 
-    async def get_next_nonce(self):
-        """Get next nonce from API"""
-        async with self._nonce_lock:
+    async def ensure_signer_initialized(self):
+        """Ensure SignerClient is properly initialized with fresh nonce"""
+        if not self.signer_client:
+            logger.info(f"Initializing SignerClient for account {self.account_index}")
             try:
-                # Use the transaction API to get next nonce
-                import aiohttp
-                import json
+                self.signer_client = lighter.SignerClient(
+                    url=settings.lighter_endpoint,
+                    private_key=self.api_secret,
+                    account_index=self.account_index,
+                    api_key_index=self.api_key_index,
+                )
 
-                url = f"{self.base_url}/api/v1/accounts/{self.account_index}/next_nonce"
-                headers = {
-                    "Authorization": f"Bearer {self._auth_token}" if self._auth_token else "",
-                    "Content-Type": "application/json"
-                }
-
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url, headers=headers) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            self._nonce = data.get("next_nonce", 1)
-                            logger.info(f"Got next nonce for account {self.account_index}: {self._nonce}")
-                        else:
-                            # Fallback to timestamp-based nonce
-                            self._nonce = int(time.time() * 1000) % 1000000
-                            logger.warning(f"Failed to get nonce from API, using fallback: {self._nonce}")
+                # Check the client and let it fetch its own nonce
+                err = self.signer_client.check_client()
+                if err:
+                    logger.error(f"SignerClient check failed: {err}")
+                    # Try to recreate with fresh instance
+                    self.signer_client = None
+                    raise Exception(f"SignerClient check failed: {err}")
+                else:
+                    logger.info(f"SignerClient initialized successfully for account {self.account_index}")
             except Exception as e:
-                logger.error(f"Error getting next nonce: {e}")
-                # Fallback to timestamp-based nonce
-                self._nonce = int(time.time() * 1000) % 1000000
+                logger.error(f"Failed to initialize SignerClient for account {self.account_index}: {e}")
+                self.signer_client = None
+                raise
 
-            return self._nonce
-
-    async def increment_nonce(self):
-        """Increment nonce for next order"""
-        async with self._nonce_lock:
-            if self._nonce is None:
-                await self.get_next_nonce()
-            else:
-                self._nonce += 1
-            return self._nonce
+    async def reset_signer_client(self):
+        """Reset SignerClient to force fresh nonce"""
+        logger.info(f"Resetting SignerClient for account {self.account_index}")
+        self.signer_client = None
+        await self.ensure_signer_initialized()
 
     async def connect(self):
         """Connect to Lighter DEX with timeout"""
@@ -429,34 +421,15 @@ class LighterAccountClientV2:
             # Generate unique order index
             order_index = self._generate_order_index()
 
-            # Get or increment nonce
-            if self._nonce is None:
-                await self.get_next_nonce()
-            else:
-                await self.increment_nonce()
+            # Ensure SignerClient is initialized (it manages its own nonce)
+            await self.ensure_signer_initialized()
 
-            logger.info(f"Using nonce {self._nonce} for order index {order_index} on account {self.account_index}")
+            logger.info(f"Using order index {order_index} on account {self.account_index}")
 
             # Create market order with timeout
             order_timeout = 30  # seconds
 
             async def _create_order():
-                # Check and reinitialize signer if needed
-                if not self.signer_client:
-                    logger.warning(f"SignerClient not initialized for account {self.account_index}, attempting to reinitialize")
-                    try:
-                        self.signer_client = lighter.SignerClient(
-                            url=settings.lighter_endpoint,
-                            private_key=self.api_secret,
-                            account_index=self.account_index,
-                            api_key_index=self.api_key_index,
-                        )
-                        err = self.signer_client.check_client()
-                        if err:
-                            raise Exception(f"SignerClient check failed: {err}")
-                    except Exception as e:
-                        logger.error(f"Failed to reinitialize SignerClient: {e}")
-                        raise
 
                 return await self.signer_client.create_order(
                     market_index=market_index,
@@ -473,8 +446,23 @@ class LighterAccountClientV2:
             tx, tx_hash, err = await asyncio.wait_for(_create_order(), timeout=order_timeout)
 
             if err:
-                logger.error(f"Market order failed for account {self.account_index}: {err}")
-                raise Exception(f"Market order failed: {err}")
+                error_msg = f"Market order failed for account {self.account_index}: {err}"
+                logger.error(error_msg)
+
+                # If nonce error, reset SignerClient and retry once
+                if "invalid nonce" in str(err).lower():
+                    logger.warning(f"Invalid nonce detected, resetting SignerClient for account {self.account_index}")
+                    await self.reset_signer_client()
+
+                    # Retry the order with fresh SignerClient
+                    logger.info(f"Retrying order with fresh SignerClient for account {self.account_index}")
+                    tx, tx_hash, err = await asyncio.wait_for(_create_order(), timeout=order_timeout)
+
+                    if err:
+                        logger.error(f"Retry failed for account {self.account_index}: {err}")
+                        raise Exception(f"Market order failed after retry: {err}")
+                else:
+                    raise Exception(f"Market order failed: {err}")
 
             result = {
                 "tx_hash": tx_hash,
