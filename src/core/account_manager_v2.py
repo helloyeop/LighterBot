@@ -273,7 +273,7 @@ class LighterAccountClientV2:
         """Connect to Lighter DEX with timeout"""
         try:
             # Set connection timeout
-            connect_timeout = 10  # seconds
+            connect_timeout = 5  # seconds - reduced for faster response on limited VPS
 
             async def _connect():
                 # Initialize API client for read operations

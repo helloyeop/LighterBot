@@ -1,0 +1,24 @@
+{
+  "multi_account": {
+    "batch_size": 2,
+    "batch_delay_seconds": 0.5,
+    "max_concurrent_orders": 2,
+    "connection_timeout_seconds": 5,
+    "order_timeout_seconds": 30
+  },
+  "resource_limits": {
+    "max_workers": 4,
+    "max_websocket_connections": 2,
+    "enable_connection_pooling": true,
+    "connection_pool_size": 2
+  },
+  "retry_policy": {
+    "max_retries": 2,
+    "retry_delay_seconds": 1,
+    "exponential_backoff": false
+  },
+  "monitoring": {
+    "log_performance_metrics": true,
+    "metrics_interval_seconds": 60
+  }
+}

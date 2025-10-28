@@ -88,27 +88,38 @@ class MultiAccountSignalService:
         """Process signal for all active accounts"""
         try:
             all_accounts = account_manager.get_all_accounts()
-            tasks = []
+            active_accounts = [acc for acc in all_accounts if acc.get('active', True)]
 
-            for account_config in all_accounts:
-                if account_config.get('active', True):
+            if not active_accounts:
+                logger.warning("No active accounts found to process signal")
+                return
+
+            # For limited resources, process accounts in smaller batches
+            batch_size = 2  # Process 2 accounts at a time to reduce CPU load
+
+            for i in range(0, len(active_accounts), batch_size):
+                batch = active_accounts[i:i + batch_size]
+                tasks = []
+
+                for account_config in batch:
                     account_index = account_config['account_index']
-                    # Create task for each account
                     task = self.process_signal(signal, account_index)
                     tasks.append(task)
 
-            if tasks:
-                # Process all accounts in parallel
+                # Process batch in parallel
+                logger.info(f"Processing batch {i//batch_size + 1} with {len(tasks)} accounts")
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
                 # Log any errors
-                for i, result in enumerate(results):
+                for j, result in enumerate(results):
                     if isinstance(result, Exception):
                         logger.error(
-                            f"Error processing signal for account {all_accounts[i]['account_index']}: {result}"
+                            f"Error processing signal for account {batch[j]['account_index']}: {result}"
                         )
-            else:
-                logger.warning("No active accounts found to process signal")
+
+                # Small delay between batches to prevent overwhelming the system
+                if i + batch_size < len(active_accounts):
+                    await asyncio.sleep(0.5)
 
         except Exception as e:
             logger.error("Failed to process signal for all accounts", error=str(e))
