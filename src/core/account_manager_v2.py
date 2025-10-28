@@ -11,6 +11,8 @@ import structlog
 from config.settings import get_settings
 import lighter
 from datetime import datetime, timedelta
+import time
+import random
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -268,6 +270,50 @@ class LighterAccountClientV2:
         self.ws_thread = None
         self.pending_orders = {}
         self._position_lock = asyncio.Lock()  # Async lock for position updates
+        # Nonce management
+        self._nonce = None
+        self._nonce_lock = asyncio.Lock()  # Lock for nonce updates
+        self._last_order_index = None
+
+    async def get_next_nonce(self):
+        """Get next nonce from API"""
+        async with self._nonce_lock:
+            try:
+                # Use the transaction API to get next nonce
+                import aiohttp
+                import json
+
+                url = f"{self.base_url}/api/v1/accounts/{self.account_index}/next_nonce"
+                headers = {
+                    "Authorization": f"Bearer {self._auth_token}" if self._auth_token else "",
+                    "Content-Type": "application/json"
+                }
+
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            self._nonce = data.get("next_nonce", 1)
+                            logger.info(f"Got next nonce for account {self.account_index}: {self._nonce}")
+                        else:
+                            # Fallback to timestamp-based nonce
+                            self._nonce = int(time.time() * 1000) % 1000000
+                            logger.warning(f"Failed to get nonce from API, using fallback: {self._nonce}")
+            except Exception as e:
+                logger.error(f"Error getting next nonce: {e}")
+                # Fallback to timestamp-based nonce
+                self._nonce = int(time.time() * 1000) % 1000000
+
+            return self._nonce
+
+    async def increment_nonce(self):
+        """Increment nonce for next order"""
+        async with self._nonce_lock:
+            if self._nonce is None:
+                await self.get_next_nonce()
+            else:
+                self._nonce += 1
+            return self._nonce
 
     async def connect(self):
         """Connect to Lighter DEX with timeout"""
@@ -382,6 +428,14 @@ class LighterAccountClientV2:
 
             # Generate unique order index
             order_index = self._generate_order_index()
+
+            # Get or increment nonce
+            if self._nonce is None:
+                await self.get_next_nonce()
+            else:
+                await self.increment_nonce()
+
+            logger.info(f"Using nonce {self._nonce} for order index {order_index} on account {self.account_index}")
 
             # Create market order with timeout
             order_timeout = 30  # seconds
@@ -606,9 +660,22 @@ class LighterAccountClientV2:
         return market_map.get(symbol, 0)
 
     def _generate_order_index(self) -> int:
-        """Generate unique order index"""
+        """Generate unique order index (12 digits max as per Lighter requirements)"""
         import time
-        return int(time.time() * 1000) % 1000000
+        import random
+
+        if self._last_order_index is None:
+            # First order: use random number less than 12 digits
+            self._last_order_index = random.randint(100000, 999999999999)  # Max 12 digits
+        else:
+            # Subsequent orders: increment by 1
+            self._last_order_index += 1
+
+        # Ensure it stays within 12 digits
+        if self._last_order_index >= 1000000000000:  # 12 digits limit
+            self._last_order_index = random.randint(100000, 999999999999)
+
+        return self._last_order_index
 
     def stop_websocket(self):
         """Stop WebSocket connection if exists"""
