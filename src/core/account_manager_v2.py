@@ -371,11 +371,13 @@ class LighterAccountClientV2:
             logger.info(
                 "Creating market order",
                 account_index=self.account_index,
+                api_key_index=self.api_key_index,
                 symbol=symbol,
                 side=side,
                 quantity=quantity,
                 base_amount=base_amount,
-                estimated_price=estimated_price
+                estimated_price=estimated_price,
+                has_signer=bool(self.signer_client)
             )
 
             # Generate unique order index
@@ -385,6 +387,23 @@ class LighterAccountClientV2:
             order_timeout = 30  # seconds
 
             async def _create_order():
+                # Check and reinitialize signer if needed
+                if not self.signer_client:
+                    logger.warning(f"SignerClient not initialized for account {self.account_index}, attempting to reinitialize")
+                    try:
+                        self.signer_client = lighter.SignerClient(
+                            url=settings.lighter_endpoint,
+                            private_key=self.api_secret,
+                            account_index=self.account_index,
+                            api_key_index=self.api_key_index,
+                        )
+                        err = self.signer_client.check_client()
+                        if err:
+                            raise Exception(f"SignerClient check failed: {err}")
+                    except Exception as e:
+                        logger.error(f"Failed to reinitialize SignerClient: {e}")
+                        raise
+
                 return await self.signer_client.create_order(
                     market_index=market_index,
                     client_order_index=order_index,
